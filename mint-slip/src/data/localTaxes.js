@@ -1,0 +1,22 @@
+// src/data/localTaxes.js
+export const localTaxRates = {
+  "New York City, NY": { name: "New York City Resident Tax", rate: 0.038 },
+  "Los Angeles, CA": { name: "Los Angeles City Business Tax", rate: 0.032 },
+  "Chicago, IL": { name: "Chicago City Earnings Tax", rate: 0.025 },
+  "Philadelphia, PA": { name: "Philadelphia Wage Tax", rate: 0.034 },
+  "Louisville, KY": { name: "Louisville - OLTS", rate: 0.021 },
+  "Cincinnati, OH": { name: "Cincinnati Earnings Tax", rate: 0.027 },
+  "Cleveland, OH": { name: "Cleveland Municipal Income Tax", rate: 0.024 },
+  "Columbus, OH": { name: "Columbus Municipal Income Tax", rate: 0.022 },
+  "Detroit, MI": { name: "Detroit City Income Tax", rate: 0.026 },
+  "Denver, CO": { name: "Denver Occupational Privilege Tax", rate: 0.023 },
+  "Portland, OR": { name: "Portland Metro Supportive Housing Tax", rate: 0.029 },
+  "Seattle, WA": { name: "Seattle Local Payroll Expense Tax", rate: 0.030 },
+  "San Francisco, CA": { name: "San Francisco Gross Receipts Tax", rate: 0.035 },
+  "Kansas City, MO": { name: "Kansas City Earnings Tax", rate: 0.010 },
+  "St. Louis, MO": { name: "St. Louis City Earnings Tax", rate: 0.010 },
+  "Baltimore, MD": { name: "Baltimore City Local Income Tax", rate: 0.032 },
+  "Birmingham, AL": { name: "Birmingham Occupational Tax", rate: 0.010 },
+  "Pittsburgh, PA": { name: "Pittsburgh City Wage Tax", rate: 0.030 },
+  "Lexington, KY": { name: "Lexington-Fayette County Occupational Tax", rate: 0.020 },
+};
