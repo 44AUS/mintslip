@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap");.wallet-adapter-button {
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+
+.wallet-adapter-button {
     background-color: transparent;
     border: none;
     color: #fff;
@@ -29,5 +31,6 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #1B1D2F;
+  background-color: #050614;
+  font-family: "Roboto", sans-serif;
 }

@@ -203,11 +203,12 @@ export default function PaystubForm() {
     >
         
       {/* LEFT COLUMN: FORM */}
-      <Box flex="1.2" bg="#1a1b23"
-          border="1px solid rgb(168 85 247 / .2)"
-          borderRadius="6px"
+      <Box flex="1.2"
+                bg="#0d0624"
+          border="1px solid #8000ff"
+          borderRadius="1.875rem"
           p="15px"
-          boxShadow="0 0 20px rgba(192,132,252,0.15)" minW={{ base: "100%", lg: "55%" }}>
+          minW={{ base: "100%", lg: "55%" }}>
 
         <form
           onSubmit={handleGenerate}
@@ -225,13 +226,13 @@ export default function PaystubForm() {
               <Field.Label>
                 Employee Name <Field.RequiredIndicator />
               </Field.Label>
-              <Input name="name" value={formData.name} onChange={handleChange} required />
+              <Input name="name" size="lg"  css={{ "--focus-color": "purple" }} value={formData.name} onChange={handleChange} required />
             </Field.Root>
             <Field.Root required>
               <Field.Label>
                 Last 4 of SSN <Field.RequiredIndicator />
               </Field.Label>
-              <Input name="ssn" value={formData.ssn} onChange={handleChange} required />
+              <Input name="ssn" size="lg" value={formData.ssn} onChange={handleChange} required />
             </Field.Root>
           </HStack>
 
@@ -240,13 +241,13 @@ export default function PaystubForm() {
               <Field.Label>
                 Employee Address <Field.RequiredIndicator />
               </Field.Label>
-              <Input name="address" value={formData.address} onChange={handleChange} />
+              <Input name="address" size="lg" value={formData.address} onChange={handleChange} />
             </Field.Root>
             <Field.Root required>
               <Field.Label>
                 Employee City <Field.RequiredIndicator />
               </Field.Label>
-              <Input name="city" value={formData.city} onChange={handleChange} />
+              <Input name="city" size="lg" value={formData.city} onChange={handleChange} />
             </Field.Root>
           </HStack>
 
@@ -255,13 +256,13 @@ export default function PaystubForm() {
               <Field.Label>
                 Employee State <Field.RequiredIndicator />
               </Field.Label>
-              <Input name="state" value={formData.state} onChange={handleChange} />
+              <Input name="state" size="lg" value={formData.state} onChange={handleChange} />
             </Field.Root>
             <Field.Root required>
               <Field.Label>
                 Employee Zip Code <Field.RequiredIndicator />
               </Field.Label>
-              <Input name="zip" value={formData.zip} onChange={handleChange} />
+              <Input name="zip" size="lg" value={formData.zip} onChange={handleChange} />
             </Field.Root>
           </HStack>
 
@@ -272,7 +273,7 @@ export default function PaystubForm() {
               <Field.Label>
                 Company Name <Field.RequiredIndicator />
               </Field.Label>
-              <Input name="company" value={formData.company} onChange={handleChange} />
+              <Input name="company" size="lg" value={formData.company} onChange={handleChange} />
             </Field.Root>
             <Field.Root required>
               <Field.Label>
@@ -280,6 +281,7 @@ export default function PaystubForm() {
               </Field.Label>
               <Input
                 name="companyAddress"
+                size="lg"
                 value={formData.companyAddress}
                 onChange={handleChange}
               />
@@ -293,6 +295,7 @@ export default function PaystubForm() {
               </Field.Label>
               <Input
                 name="companyCity"
+                size="lg"
                 value={formData.companyCity}
                 onChange={handleChange}
               />
@@ -303,6 +306,7 @@ export default function PaystubForm() {
               </Field.Label>
               <Input
                 name="companyState"
+                size="lg"
                 value={formData.companyState}
                 onChange={handleChange}
               />
@@ -316,6 +320,7 @@ export default function PaystubForm() {
               </Field.Label>
               <Input
                 name="companyZip"
+                size="lg"
                 placeholder="Company Zip"
                 value={formData.companyZip}
                 onChange={handleChange}
@@ -327,6 +332,7 @@ export default function PaystubForm() {
               </Field.Label>
               <Input
                 name="companyPhone"
+                size="lg"
                 placeholder="Company Phone"
                 value={formData.companyPhone}
                 onChange={handleChange}
@@ -341,6 +347,7 @@ export default function PaystubForm() {
               </Field.Label>
               <Input
                 name="hireDate"
+                size="lg"
                 type="date"
                 placeholder="Hire Date"
                 value={formData.hireDate}
@@ -353,6 +360,7 @@ export default function PaystubForm() {
               </Field.Label>
               <Input
                 name="rate"
+                size="lg"
                 type="number"
                 value={formData.rate}
                 onChange={handleChange}
@@ -365,7 +373,7 @@ export default function PaystubForm() {
               collection={frameworks}
               value={formData.payFrequency}
               onValueChange={handleChange}
-              size="sm"
+              size="lg"
               width="320px"
             >
               <Select.HiddenSelect />
@@ -411,6 +419,7 @@ export default function PaystubForm() {
 
           <Input
             name="numStubs"
+            size="lg"
             type="number"
             placeholder="Number of Paystubs to Generate"
             value={formData.numStubs}
@@ -418,12 +427,14 @@ export default function PaystubForm() {
           />
           <Input
             name="hoursList"
+            size="lg"
             placeholder="Hours Worked Each Stub (comma separated)"
             value={formData.hoursList}
             onChange={handleChange}
           />
           <Input
             name="overtimeList"
+            size="lg"
             placeholder="Overtime Hours Each Stub (comma separated)"
             value={formData.overtimeList}
             onChange={handleChange}
@@ -431,6 +442,7 @@ export default function PaystubForm() {
 
           <Checkbox.Root
                         name="includeLocalTax"
+                        size="lg"
               checked={formData.includeLocalTax}
       onCheckedChange={handleChange}
     >
@@ -464,13 +476,12 @@ export default function PaystubForm() {
         p="4"
       >
         <Box
-          bg="#1a1b23"
-          border="1px solid rgb(168 85 247 / .2)"
-          borderRadius="6px"
+          bg="#0d0624"
+          border="1px solid #8000ff"
+          borderRadius="1.875rem"
           p="15px"
-          boxShadow="0 0 20px rgba(192,132,252,0.15)"
         >
-          <h2 style={{ marginTop: 0, color: "#c084fc", fontSize:"1.5rem", fontWeight: '700' }}>Pay Preview</h2>
+          <h2 style={{ marginTop: 0, color: "#8000ff", fontSize:"1.5rem", fontWeight: '700' }}>Pay Preview</h2>
           <p><strong>Total Gross Pay:</strong> ${preview.totalGross.toFixed(2)}</p>
           <p><strong>Social Security (6.2%):</strong> ${preview.ssTax.toFixed(2)}</p>
           <p><strong>Medicare (1.45%):</strong> ${preview.medTax.toFixed(2)}</p>
@@ -481,18 +492,17 @@ export default function PaystubForm() {
           <br />
           <hr />
           <br />
-          <p><strong>Total Taxes:</strong> ${preview.totalTaxes.toFixed(2)}</p>
-          <p><strong>Net Pay (After Taxes):</strong> ${preview.netPay.toFixed(2)}</p>
+          <p style={{ color: '#ff0000ff' }}><strong>Total Taxes:</strong> ${preview.totalTaxes.toFixed(2)}</p>
+          <p style={{ color: '#6eff00' }}><strong>Net Pay (After Taxes):</strong> ${preview.netPay.toFixed(2)}</p>
         </Box>
 
         <Box
-          bg="#1a1b23"
-          border="1px solid rgb(168 85 247 / .2)"
-          borderRadius="6px"
+          bg="#0d0624"
+          border="1px solid #8000ff"
+          borderRadius="1.875rem"
           p="15px"
-          boxShadow="0 0 12px rgba(192,132,252,0.15)"
         >
-          <h2 style={{ marginTop: 0, color: "#c084fc", fontSize:"1.5rem", fontWeight: '700' }}>Pay Schedule Preview</h2>
+          <h2 style={{ marginTop: 0, color: "#8000ff", fontSize:"1.5rem", fontWeight: '700' }}>Pay Schedule Preview</h2>
           {preview.schedule.map((item) => (
             <div key={item.stub} style={{ padding: "4px 0", borderBottom: "1px solid #2d2d3a" }}>
               Stub {item.stub}. {item.start} → {item.end} | Pay Date: {item.pay} | Hours: {item.hours} | OT: {item.overtime}
