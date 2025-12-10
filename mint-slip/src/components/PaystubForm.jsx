@@ -19,6 +19,7 @@ export default function PaystubForm() {
   const [formData, setFormData] = useState({
     name: "",
     ssn: "",
+    bank: "",
     address: "",
     city: "",
     state: "",
@@ -233,6 +234,18 @@ export default function PaystubForm() {
                 Last 4 of SSN <Field.RequiredIndicator />
               </Field.Label>
               <Input name="ssn" size="lg" value={formData.ssn} onChange={handleChange} required />
+            </Field.Root>
+            <Field.Root required>
+              <Field.Label>
+                Bank Name <Field.RequiredIndicator />
+              </Field.Label>
+              <Input name="bankName" size="lg" value={formData.bankName} onChange={handleChange} required />
+            </Field.Root>
+            <Field.Root required>
+              <Field.Label>
+                Last 4 of Bank (Direct Deposit) <Field.RequiredIndicator />
+              </Field.Label>
+              <Input name="bank" size="lg" value={formData.bank} onChange={handleChange} required />
             </Field.Root>
           </HStack>
 

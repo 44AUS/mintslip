@@ -1,5 +1,7 @@
 import { jsPDF } from "jspdf";
 import { localTaxRates } from "../data/localTaxes";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 // ---- helper to load logo safely ----
 async function loadImageAsBase64(url) {
@@ -15,6 +17,14 @@ async function loadImageAsBase64(url) {
   } catch {
     return null;
   }
+}
+
+// ✅ NUMBER FORMATTER (Adds commas)
+function fmt(n) {
+  return Number(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 // ✅ STATE TAX RATES (by state abbreviation)
@@ -47,7 +57,7 @@ function nextWeekday(date, weekday) {
   return result;
 }
 
-// ✅ Safe date parser
+// Safe date parser
 function safeDate(value) {
   const d = new Date(value);
   return isNaN(d.getTime()) ? new Date() : d;
@@ -61,18 +71,27 @@ export async function generateAndDownloadMultiple(data) {
   const payDay = data.payDay || "Friday";
 
   const hoursList =
-    data.hoursList?.split(",").map((x) => parseFloat(x.trim()) || 0) || [];
+    data.hoursList?.toString().trim() === ""
+      ? []
+      : data.hoursList?.split(",").map((x) => parseFloat(x.trim()) || 0) || [];
   const overtimeList =
-    data.overtimeList?.split(",").map((x) => parseFloat(x.trim()) || 0) || [];
+    data.overtimeList?.toString().trim() === ""
+      ? []
+      : data.overtimeList?.split(",").map((x) => parseFloat(x.trim()) || 0) || [];
 
   const periodLength = payFrequency === "biweekly" ? 14 : 7;
   let startDate = new Date(hireDate);
+
+  // Create ZIP
+  const zip = new JSZip();
+
+  // Keep track of all generated paystubs (for year-to-date sums)
+  const allPaystubs = [];
 
   for (let i = 0; i < numStubs; i++) {
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + periodLength - 1);
 
-    // ✅ FIXED PAY DATE LOGIC — pay date is one week AFTER end date, aligned to chosen weekday
     const tentativePayDate = new Date(endDate);
     tentativePayDate.setDate(tentativePayDate.getDate() + 7);
     const payDate = nextWeekday(tentativePayDate, payDay);
@@ -80,6 +99,35 @@ export async function generateAndDownloadMultiple(data) {
     const hours = hoursList[i] || (payFrequency === "biweekly" ? 80 : 40);
     const overtime = overtimeList[i] || 0;
 
+    // Compute gross values for this stub
+    const overtimeRate = Number(data.rate) * 1.5;
+    const regularGross = Number(data.rate) * Number(hours);
+    const overtimeGross = overtimeRate * Number(overtime || 0);
+    const gross = regularGross + overtimeGross;
+    const totalHours = Number(hours) + Number(overtime || 0);
+
+    // Taxes (current period) - employee portion
+    const stateRate = STATE_TAX_RATES[data.state?.toUpperCase()] ?? 0;
+    const locationKey = `${data.city?.trim()}, ${data.state?.trim()}`;
+    const localTaxInfo = localTaxRates[locationKey];
+    const includeLocalTax = data.includeLocalTax !== false;
+
+    const socialSecurity = gross * 0.062;
+    const medicare = gross * 0.0145;
+    const stateWithholding = gross * stateRate;
+    const localWithholding = includeLocalTax && localTaxInfo ? gross * localTaxInfo.rate : 0;
+
+    // Total employee taxes for this paystub (sum of employee-side taxes)
+    const totalEmpTax = socialSecurity + medicare + stateWithholding + localWithholding;
+
+    // Employer taxes (for display if needed)
+    const futa = gross * 0.006;
+    const stateUnemployment = gross * 0.01;
+    const employerSocial = gross * 0.062;
+    const employerMedicare = gross * 0.0145;
+    const totalEmployerTax = futa + stateUnemployment + employerSocial + employerMedicare;
+
+    // Build the period data to pass into the single-paystub renderer
     const periodData = {
       ...data,
       startDate: startDate.toISOString().split("T")[0],
@@ -88,15 +136,60 @@ export async function generateAndDownloadMultiple(data) {
       hours,
       overtime,
       periods: numStubs,
+      // pass precomputed breakdown so single generator can use them
+      regularGross,
+      overtimeGross,
+      gross,
+      totalHours,
+      socialSecurity,
+      medicare,
+      stateWithholding,
+      localWithholding,
+      totalEmpTax,
+      futa,
+      stateUnemployment,
+      employerSocial,
+      employerMedicare,
+      totalEmployerTax,
+      // reference to the running array (will include previous stubs and we will add current below)
+      allPaystubs,
     };
 
-    await generateSinglePaystub(periodData);
+    // Add the current stub record to allPaystubs (important: include current values)
+    allPaystubs.push({
+      payDate: periodData.payDate,
+      regularGross,
+      overtimeGross,
+      gross,
+      hours: periodData.hours,
+      totalHours,
+      socialSecurity,
+      medicare,
+      stateWithholding,
+      localWithholding,
+      totalEmpTax,
+      net: gross - totalEmpTax,
+    });
+
+    // Generate PDF blob for this stub (single renderer will use data.allPaystubs for YTD)
+    const pdfBlob = await generateSinglePaystub(periodData, true);
+
+    // Add to ZIP (use a filename that includes an index to avoid collisions)
+    const safeName = (data.name || "employee").replace(/\s+/g, "_");
+    zip.file(`${safeName}-paystub-${periodData.payDate}.pdf`, pdfBlob);
+
+    // advance to next period
     startDate.setDate(startDate.getDate() + periodLength);
   }
+
+  // generate ZIP and trigger single download
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  saveAs(zipBlob, `${(data.name || "paystubs").replace(/\s+/g, "_")}-paystubs.zip`);
 }
 
 // ---- SINGLE PAYSTUB GENERATOR ----
-async function generateSinglePaystub(data) {
+async function generateSinglePaystub(data, returnBlob = false) {
+  // Allow the function to compute values itself if not passed in (backwards compatible)
   const filename = `${data.name}-paystub-${data.payDate}.pdf`;
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const left = 36;
@@ -140,11 +233,15 @@ async function generateSinglePaystub(data) {
   leftY += 30;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text(`Pay period: ${data.startDate} – ${data.endDate}   Pay Day: ${data.payDate}`, logoX, leftY);
+  doc.text(
+    `Pay period: ${data.startDate} – ${data.endDate}   Pay Day: ${data.payDate}`,
+    logoX,
+    leftY
+  );
   leftY += 12;
   doc.text(`Hire Date: ${data.hireDate}`, logoX, leftY);
   leftY += 12;
-  doc.text(`${data.name} (...${data.ssn})`, logoX, leftY);
+  doc.text(`${data.name} (...Direct Deposit to ${data.bankName} ******${data.bank})`, logoX, leftY);
 
   // Right: Company + Employee boxes
   const boxTop = top + 30;
@@ -165,39 +262,77 @@ async function generateSinglePaystub(data) {
   doc.setFontSize(7);
   doc.text(data.company, rightStartX + 8, boxTop + 28);
   doc.text(data.companyAddress, rightStartX + 8, boxTop + 40);
-  doc.text(data.companyCity, rightStartX + 8, boxTop + 52);
+  doc.text(`${data.companyCity}, ${data.companyState} ${data.companyZip}`, rightStartX + 8, boxTop + 52);
   doc.text(data.companyPhone, rightStartX + 8, boxTop + 64);
   doc.text(data.name, rightStartX + boxWidth + 18, boxTop + 28);
   doc.text(`XXX-XX-${data.ssn}`, rightStartX + boxWidth + 18, boxTop + 40);
   doc.text(data.address, rightStartX + boxWidth + 18, boxTop + 52);
-  doc.text(`${data.city}, ${data.state}`, rightStartX + boxWidth + 18, boxTop + 64);
+  doc.text(`${data.city}, ${data.state} ${data.zip}`, rightStartX + boxWidth + 18, boxTop + 64);
 
   y = Math.max(leftY, boxTop + boxHeight) + 30;
 
   // ---------- EARNINGS ----------
-  const overtimeRate = Number(data.rate) * 1.5;
-  const regularGross = Number(data.rate) * Number(data.hours);
-  const overtimeGross = overtimeRate * Number(data.overtime || 0);
-  const gross = regularGross + overtimeGross;
-  const ytdGross = gross * Number(data.periods);
-  const totalHours = Number(data.hours) + Number(data.overtime || 0);
-  const ytdHours = totalHours * Number(data.periods);
+  // prefer precomputed values passed from the generator; fall back to compute here
+  const overtimeRate = data.overtimeRate ?? Number(data.rate) * 1.5;
+  const regularGross = Number(data.regularGross ?? Number(data.rate) * Number(data.hours));
+  const overtimeGross = Number(data.overtimeGross ?? overtimeRate * Number(data.overtime || 0));
+  const gross = Number(data.gross ?? regularGross + overtimeGross);
+  const totalHours = Number(data.totalHours ?? (Number(data.hours) + Number(data.overtime || 0)));
 
+  // YTD and totals will be computed below using data.allPaystubs
   sectionHeader(doc, "Employee Gross Earnings", left, y, usableWidth);
   y += 20;
 
+  // Determine YTD values by calendar year using data.allPaystubs (if provided)
+  // If no allPaystubs provided, fall back to simple per-file behavior
+  let ytdRegularGross = regularGross;
+  let ytdOvertimeGross = overtimeGross;
+  let ytdGross = gross;
+  let ytdHours = totalHours;
+  let ytdSocial = data.socialSecurity ?? gross * 0.062;
+  let ytdMedicare = data.medicare ?? gross * 0.0145;
+  let ytdStateWithholding = data.stateWithholding ?? (gross * (STATE_TAX_RATES[data.state?.toUpperCase()] ?? 0));
+  let ytdLocalWithholding = data.localWithholding ?? 0;
+  let ytdTotalEmpTax = data.totalEmpTax ?? ytdSocial + ytdMedicare + ytdStateWithholding + ytdLocalWithholding;
+
+  if (Array.isArray(data.allPaystubs) && data.allPaystubs.length > 0) {
+    const thisDate = new Date(data.payDate);
+    const yearStart = new Date(thisDate.getFullYear(), 0, 1);
+    const payPeriodsThisYear = data.allPaystubs.filter((p) => {
+      const d = new Date(p.payDate);
+      return d >= yearStart && d <= thisDate;
+    });
+
+    // Sum up the year-to-date values
+    ytdRegularGross = payPeriodsThisYear.reduce((s, p) => s + (p.regularGross || 0), 0);
+    ytdOvertimeGross = payPeriodsThisYear.reduce((s, p) => s + (p.overtimeGross || 0), 0);
+    ytdGross = payPeriodsThisYear.reduce((s, p) => s + (p.gross || 0), 0);
+    ytdHours = payPeriodsThisYear.reduce((s, p) => s + (p.totalHours || 0), 0);
+    ytdSocial = payPeriodsThisYear.reduce((s, p) => s + (p.socialSecurity || 0), 0);
+    ytdMedicare = payPeriodsThisYear.reduce((s, p) => s + (p.medicare || 0), 0);
+    ytdStateWithholding = payPeriodsThisYear.reduce((s, p) => s + (p.stateWithholding || 0), 0);
+    ytdLocalWithholding = payPeriodsThisYear.reduce((s, p) => s + (p.localWithholding || 0), 0);
+    ytdTotalEmpTax = payPeriodsThisYear.reduce((s, p) => s + (p.totalEmpTax || 0), 0);
+  }
+
   const earningsRows = [
     ["Description", "Rate", "Hours", "Current", "Year-To-Date"],
-    ["Regular Hours | Hourly", `$${data.rate.toFixed(2)}`, data.hours, `$${regularGross.toFixed(2)}`, `$${(regularGross * data.periods).toFixed(2)}`],
+    [
+      "Regular Hours | Hourly",
+      `$${fmt(data.rate)}`,
+      data.hours,
+      `$${fmt(regularGross)}`,
+      `$${fmt(ytdRegularGross)}`,
+    ],
   ];
 
-  if (data.overtime > 0) {
+  if (Number(data.overtime) > 0) {
     earningsRows.push([
       "Overtime Hours | 1.5x",
-      `$${overtimeRate.toFixed(2)}`,
+      `$${fmt(overtimeRate)}`,
       data.overtime,
-      `$${overtimeGross.toFixed(2)}`,
-      `$${(overtimeGross * data.periods).toFixed(2)}`,
+      `$${fmt(overtimeGross)}`,
+      `$${fmt(ytdOvertimeGross)}`,
     ]);
   }
 
@@ -214,6 +349,7 @@ async function generateSinglePaystub(data) {
   sectionHeader(doc, "Employer Tax", taxRightX, y, taxTableWidth);
   y += 18;
 
+  // Recompute rates and local info as fallback
   const stateRate = STATE_TAX_RATES[data.state?.toUpperCase()] ?? 0;
   const locationKey = `${data.city?.trim()}, ${data.state?.trim()}`;
   const localTax = localTaxRates[locationKey];
@@ -231,19 +367,63 @@ async function generateSinglePaystub(data) {
     ],
   ];
 
+  // Current period employee taxes (use provided breakdown if present)
+  const eCurrentBreakdown = {
+    "Social Security": Number(data.socialSecurity ?? regularGross * 0.062 + overtimeGross * 0.062) || (gross * 0.062),
+    "Medicare": Number(data.medicare ?? gross * 0.0145) || (gross * 0.0145),
+    [`${data.state?.toUpperCase() || "State"} Withholding Tax`]: Number(data.stateWithholding ?? gross * stateRate) || (gross * stateRate),
+    [localTax && includeLocalTax ? localTax.name : "Local Tax (none)"]: Number(data.localWithholding ?? (includeLocalTax && localTax ? gross * localTax.rate : 0)) || 0,
+  };
+
   const empTaxRows = [["Description", "Current", "YTD"]];
   const erTaxRows = [["Company Tax", "Current", "YTD"]];
   let totalEmpTax = 0;
+  let totalEmpTaxYtd = ytdTotalEmpTax;
 
+  // build rows using taxDefs, but consult computed breakdowns and YTD sums
   taxDefs.forEach(([eLabel, eRate, rLabel, rRate]) => {
-    const eCurrent = gross * eRate;
-    const eYtd = eCurrent * data.periods;
+    const eCurrent =
+      // prefer breakdown values we computed earlier in generator
+      (eLabel === "Social Security" ? Number(data.socialSecurity ?? socialSecurity)
+        : eLabel === "Medicare" ? Number(data.medicare ?? medicare)
+        : eLabel.includes("Withholding") && eLabel.toLowerCase().includes("state") ? Number(data.stateWithholding ?? (gross * stateRate))
+        : eLabel === (localTax && includeLocalTax ? localTax.name : "Local Tax (none)") ? Number(data.localWithholding ?? localWithholding)
+        : gross * (eRate || 0)
+      ) || 0;
+
+    // YTD for this tax from earlier sums
+    const eYtd =
+      (eLabel === "Social Security" ? ytdSocial
+        : eLabel === "Medicare" ? ytdMedicare
+        : eLabel.includes("Withholding") && eLabel.toLowerCase().includes("state") ? ytdStateWithholding
+        : eLabel === (localTax && includeLocalTax ? localTax.name : "Local Tax (none)") ? ytdLocalWithholding
+        : 0
+      ) || 0;
+
     totalEmpTax += eCurrent;
-    const rCurrent = gross * rRate;
-    const rYtd = rCurrent * data.periods;
-    empTaxRows.push([eLabel, `$${eCurrent.toFixed(2)}`, `$${eYtd.toFixed(2)}`]);
-    erTaxRows.push([rLabel, `$${rCurrent.toFixed(2)}`, `$${rYtd.toFixed(2)}`]);
+
+    // employer current & ytd
+    const rCurrent = gross * (rRate || 0);
+    // compute rYtd by summing from data.allPaystubs if available
+    let rYtd = 0;
+    if (Array.isArray(data.allPaystubs) && data.allPaystubs.length > 0) {
+      const thisDate = new Date(data.payDate);
+      const yearStart = new Date(thisDate.getFullYear(), 0, 1);
+      const payPeriodsThisYear = data.allPaystubs.filter((p) => {
+        const d = new Date(p.payDate);
+        return d >= yearStart && d <= thisDate;
+      });
+      rYtd = payPeriodsThisYear.reduce((s, p) => s + ((p.gross || 0) * (rRate || 0)), 0);
+    } else {
+      rYtd = rCurrent * (data.periods || 1);
+    }
+
+    empTaxRows.push([eLabel, `$${fmt(eCurrent)}`, `$${fmt(eYtd)}`]);
+    erTaxRows.push([rLabel, `$${fmt(rCurrent)}`, `$${fmt(rYtd)}`]);
   });
+
+  // Ensure totals are consistent (overwrite with computed totalEmpTax if we computed earlier)
+  totalEmpTax = Number(data.totalEmpTax ?? totalEmpTax);
 
   const taxYStart = y;
   const empTaxHeight = drawTable(doc, taxLeftX, y, empTaxRows, 16, taxTableWidth, true, true);
@@ -253,32 +433,65 @@ async function generateSinglePaystub(data) {
   // ---------- DEDUCTIONS ----------
   sectionHeader(doc, "Employee Deductions", left, y, usableWidth);
   y += 18;
-  drawTable(doc, left, y, [["Description", "Type", "Current", "Year-To-Date"], ["None", "–", "$0.00", "$0.00"]], 16, usableWidth, false, true);
+  drawTable(
+    doc,
+    left,
+    y,
+    [["Description", "Type", "Current", "Year-To-Date"], ["None", "–", "$0.00", "$0.00"]],
+    16,
+    usableWidth,
+    false,
+    true
+  );
   y += 40;
 
   // ---------- CONTRIBUTIONS ----------
   sectionHeader(doc, "Employee Contributions", left, y, usableWidth);
   y += 18;
-  drawTable(doc, left, y, [["Description", "Type", "Current", "Year-To-Date"], ["None", "–", "$0.00", "$0.00"]], 16, usableWidth, false, true);
+  drawTable(
+    doc,
+    left,
+    y,
+    [["Description", "Type", "Current", "Year-To-Date"], ["None", "–", "$0.00", "$0.00"]],
+    16,
+    usableWidth,
+    false,
+    true
+  );
   y += 40;
 
   // ---------- SUMMARY ----------
   sectionHeader(doc, "Summary", left, y, usableWidth);
   y += 18;
   const net = gross - totalEmpTax;
-  const ytdNet = ytdGross - totalEmpTax * data.periods;
+  // compute ytdNet from sums earlier
+  const ytdNet = (() => {
+    if (Array.isArray(data.allPaystubs) && data.allPaystubs.length > 0) {
+      const thisDate = new Date(data.payDate);
+      const yearStart = new Date(thisDate.getFullYear(), 0, 1);
+      const payPeriodsThisYear = data.allPaystubs.filter((p) => {
+        const d = new Date(p.payDate);
+        return d >= yearStart && d <= thisDate;
+      });
+      return payPeriodsThisYear.reduce((s, p) => s + ((p.gross || 0) - (p.totalEmpTax || 0)), 0);
+    } else {
+      // fallback: use ytdGross - ytdTotalEmpTax
+      return ytdGross - ytdTotalEmpTax;
+    }
+  })();
+
   drawTable(
     doc,
     left,
     y,
     [
       ["Description", "Current", "Year-To-Date"],
-      ["Gross Earnings", `$${gross.toFixed(2)}`, `$${ytdGross.toFixed(2)}`],
-      ["Taxes", `$${totalEmpTax.toFixed(2)}`, `$${(totalEmpTax * data.periods).toFixed(2)}`],
-      ["Net Pay", `$${net.toFixed(2)}`, `$${ytdNet.toFixed(2)}`],
+      ["Gross Earnings", `$${fmt(gross)}`, `$${fmt(ytdGross)}`],
+      ["Taxes", `$${fmt(totalEmpTax)}`, `$${fmt(ytdTotalEmpTax)}`],
+      ["Net Pay", `$${fmt(net)}`, `$${fmt(ytdNet)}`],
       ["Total Reimbursements", "$0.00", "$0.00"],
-      ["Check Amount", `$${net.toFixed(2)}`, `$${ytdNet.toFixed(2)}`],
-      ["Hours Worked", `${totalHours.toFixed(2)}`, `${ytdHours.toFixed(2)}`],
+      ["Check Amount", `$${fmt(net)}`, `$${fmt(ytdNet)}`],
+      ["Hours Worked", `${fmt(totalHours)}`, `${fmt(ytdHours)}`],
     ],
     16,
     usableWidth,
@@ -286,7 +499,11 @@ async function generateSinglePaystub(data) {
     true
   );
 
-  doc.save(filename);
+  if (returnBlob) {
+    return doc.output("blob");
+  } else {
+    doc.save(filename);
+  }
 }
 
 // ---- helpers ----
@@ -299,11 +516,18 @@ function sectionHeader(doc, text, x, y, width) {
 }
 
 function drawEarningsTableWithUnderline(doc, startX, startY, rows, rowHeight = 16, tableWidth = 500) {
-  const colWidths = [tableWidth * 0.45, tableWidth * 0.13, tableWidth * 0.1, tableWidth * 0.14, tableWidth * 0.18];
+  const colWidths = [
+    tableWidth * 0.45,
+    tableWidth * 0.13,
+    tableWidth * 0.1,
+    tableWidth * 0.14,
+    tableWidth * 0.18,
+  ];
   let y = startY;
   doc.setFontSize(9);
   doc.setDrawColor(200);
   doc.setLineWidth(0.3);
+
   rows.forEach((row, i) => {
     if (i === 0) {
       doc.setFont("helvetica", "bold");
@@ -340,13 +564,23 @@ function drawEarningsTableWithUnderline(doc, startX, startY, rows, rowHeight = 1
   return rows.length * rowHeight;
 }
 
-function drawTable(doc, startX, startY, rows, rowHeight = 16, tableWidth = 500, underline = true, bottomBorder = false) {
+function drawTable(
+  doc,
+  startX,
+  startY,
+  rows,
+  rowHeight = 16,
+  tableWidth = 500,
+  underline = true,
+  bottomBorder = false
+) {
   const numCols = rows[0].length;
   const colWidths = [tableWidth * 0.4, ...Array(numCols - 1).fill(tableWidth * 0.6 / (numCols - 1))];
   let y = startY;
   doc.setFontSize(9);
   doc.setDrawColor(200);
   doc.setLineWidth(0.3);
+
   rows.forEach((row, i) => {
     if (i === 0) {
       doc.setFont("helvetica", "bold");
@@ -380,11 +614,13 @@ function drawTable(doc, startX, startY, rows, rowHeight = 16, tableWidth = 500, 
     });
     y += rowHeight;
   });
+
   if (bottomBorder) {
     doc.setDrawColor(200);
     doc.setLineWidth(0.5);
     doc.line(startX, y - 11, startX + tableWidth, y - 11);
   }
+
   return rows.length * rowHeight;
 }
 

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { jsPDF } from "jspdf";
 import Calibri from "../assets/fonts/calibri.ttf"
 import CalibriBold from "../assets/fonts/calibrib.ttf"
+import GustoLogo from "../assets/Sutton.jpg";
 
 export default function BankStatementGenerator() {
   const [accountName, setAccountName] = useState("Austin Flatt");
@@ -147,7 +148,14 @@ doc.addFont("calibrib.ttf", "Calibri", "bold");
   // Header
   doc.setFontSize(28);
   doc.setTextColor("#00b26a");
-  doc.text("chime", margin, y);
+  // <-- REPLACED: insert Gusto logo instead of the old "chime" text
+  try {
+    // If your bundler provides a URL or base64 string via import, this will work.
+    doc.addImage(GustoLogo, "PNG", margin, y - 18, 90, 38);
+  } catch (e) {
+    // fallback to text if addImage fails
+    doc.text("GUSTO", margin, y);
+  }
   
 // --- Member Services Header ---
 doc.setFontSize(7);
@@ -166,7 +174,7 @@ const leftX = rightAlignX - textWidth;
 
 // Black phone number directly under "Member Services", flush to the M
 doc.setTextColor("#000000");
-doc.text("(844) 244-6363", leftX, y + 12);
+doc.text("(800) 422-3641", leftX, y + 12);
 
 
   // Account Info
@@ -225,7 +233,7 @@ doc.text("(844) 244-6363", leftX, y + 12);
   y += 70;
   doc.setFontSize(7);
   doc.setTextColor("#b4b4b4");
-  doc.text("Issued by The Bancorp Bank, N.A., Member FDIC", margin, y);
+  doc.text("Issued by Sutton Bank, Member FDIC", margin, y);
 
   // ✅ Summary section
   y += 50;
@@ -420,7 +428,6 @@ transactions.forEach((tx) => {
 
 
 
-
 // --- Final default page ---
 doc.addPage();
 const pageHeight = doc.internal.pageSize.getHeight();
@@ -435,9 +442,9 @@ let yPos = margin + 90;
 // Define text parts
 const beforePhone =
   "In case of errors or questions about your electronic transactions, call ";
-const phoneNumber = "1-844-244-6363";
+const phoneNumber = "1-800-422-3641";
 const afterPhone =
-  ", write to Chime Member Services, P.O. Box 417, San Francisco, CA 94104-0417, as soon as you can, if you think your statement or receipt is wrong or if you need more information about a transfer listed on the statement or receipt. We must hear from you no later than 60 days after we sent the FIRST statement on which the problem or error appeared.";
+  ", write to Sutton Bank Member Services, P.O. Box 505, Attica, OH 44807-505, as soon as you can, if you think your statement or receipt is wrong or if you need more information about a transfer listed on the statement or receipt. We must hear from you no later than 60 days after we sent the FIRST statement on which the problem or error appeared.";
 
 // Combine for wrapping
 const fullText = beforePhone + phoneNumber + afterPhone;
@@ -505,7 +512,7 @@ doc.text(wrappedAdditional, margin, lineY);
       );
     }
 
-    doc.save(`Chime-Statement-${accountNumber || "statement"}.pdf`);
+    doc.save(`Sutton-Statement-${accountName || "statement"}.pdf`);
   };
 
   return (
